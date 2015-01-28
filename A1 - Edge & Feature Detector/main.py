@@ -1,7 +1,8 @@
 import pylab
 import numpy
-from math import sqrt, pi, e
+import os, os.path
 import skimage
+from math import sqrt, pi, e
 from skimage import io, color
 from scipy import ndimage, signal, mgrid
 
@@ -16,7 +17,8 @@ def gauss_partial_kernels():
     x = [abs(x) for x in range(-2, 3)]
     y = [abs(y) for y in range(-2, 3)]
     '''
-    y, x = mgrid[-2:3, -2:3]
+    x = mgrid[-2:3]
+    y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
     x = x.astype(float)
     y = y.astype(float)
 
@@ -25,9 +27,9 @@ def gauss_partial_kernels():
     dgy = -y / (sigma**3. * sqrt(2.*pi)) * e**(-y**2. / (2.*sigma**2.))
 
     ## Normalize values
-    dgx = dgx / sum(sum(abs(dgx)))
-    dgy = dgy / sum(sum(abs(dgy)))
-
+    dgx = dgx / sum(abs(dgx))
+    dgy = dgy / sum(abs(dgy))
+    
     return (dgx, dgy) 
 
 def gauss_kernels():
@@ -38,34 +40,63 @@ def gauss_kernels():
     x = [abs(x) for x in range(-2, 3)]
     y = [abs(y) for y in range(-2, 3)]
     '''
-    y, x = mgrid[-2:3, -2:3]
+    x = mgrid[-2:3]
+    y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
     x = x.astype(float)
     y = y.astype(float)
 
     ## Compute gaussian values at x,y = -2, -1, 0, 1, 2
-    gx = 1 / (sigma * sqrt(2 * pi)) * e**(-x**2 / (2 * sigma**2))
-    gy = 1 / (sigma * sqrt(2 * pi)) * e**(-y**2 / (2 * sigma**2))
+    gx = 1. / (sigma * sqrt(2. * pi)) * e**(-x**2. / (2. * sigma**2.))
+    gy = 1. / (sigma * sqrt(2. * pi)) * e**(-y**2. / (2. * sigma**2.))
 
     ## Normalize values
-    gx = gx / sum(sum(abs(gx)))
-    gy = gy / sum(sum(abs(gy)))
+    gx = gx / sum(abs(gx))
+    gy = gy / sum(abs(gy))
 
     return (gx, gy)
+
+def showim( i ):
+    pylab.imshow(i, cmap="gray")
+    pylab.show()
+
+def prompt_fpath():
+    # TODO: Test
+    img_name = raw_input("Enter image name: ")
+    img_path = ".." + os.path.sep + "TestImages" + os.path.sep + img_name  
+
+    if not os.path.isfile(img_path):
+        print img_name + " is not a file under the TestImages directory. Try again."
+        return prompt_fpath()
+    else:
+        return img_path
 
 if __name__ == "__main__":
     print "~~~ Edge, Line, & Feature Detector ~~~"
 
     ## Load Image
-    # img_path = raw_input("Enter image filepath: ")
+    # print "~~~~ Images are loaded from the 'TestImages' directory, so place your images there! ~~~~"
+    # img_path = prompt_fpath()
+    # img_path = raw_input("Enter image name: ")
     img_path = "../TestImages/hyde2.jpg"
     I = skimage.img_as_float(skimage.io.imread(img_path))
-
-    # I = color.rgb2gray(I) # convert to grayscale
+    I = color.rgb2gray(I)  ## We want intensities
 
     ## Smooth (reduce noise) ##
-    sig = [sigma, sigma, 0] ## TODO: Grayscale?
-    img_smooth = ndimage.gaussian_filter(I, sigma=sig)
+    img_smooth = ndimage.gaussian_filter(I, sigma=sigma)
 
+    dgx, dgy = gauss_partial_kernels()
+    gx, gy = gauss_kernels()
+
+    imgx = signal.convolve(img_smooth, [dgx], mode='same')
+    imgx2 = signal.convolve(imgx, gy, mode='same')
+
+    imgy = signal.convolve(img_smooth, dgy, mode='same')
+    imgy2 = signal.convolve(imgy, [gx], mode='same')
+
+    F = numpy.sqrt( imgx2**2 + imgy2**2 )  ## Gradient magnitude
+    showim( F )
+
+    '''
     dgx, dgy = gauss_partial_kernels()
     gx, gy = gauss_kernels()
 
@@ -81,31 +112,4 @@ if __name__ == "__main__":
 
     # print img_smooth[:, :, 0]
     # print imgx
-
-    ## Convolve with partial derivative of bivariate Gaussian, for each channel
-    # (dgx, dgy) = gauss_partial_kernels()
-    # (x_real, y_real) = gauss_kernels()
-
-    # inter_x_r = signal.convolve2d(img_smooth[:, :, 0], [dgx], 'same')
-    # gradient_x_r = signal.convolve2d(inter_x_r, y_real)
-
-    # inter_x_g = signal.convolve2d(img_smooth[:, :, 1], [dgx], 'same')
-    # gradient_x_g = signal.convolve2d(inter_x_r, y_real)
-
-    # inter_x_b = signal.convolve2d(img_smooth[:, :, 2], [dgx], 'same')
-    # gradient_x_b = signal.convolve2d(inter_x_r, y_real)
-
-    # gradient_x = [ list(e) for e in zip(gradient_x_r, gradient_x_g, gradient_x_b) ]
-    # print gradient_x
-
-    # inter_y_r = signal.convolve2d(img_smooth[:, :, 0], [x_real], 'same')
-    # gradient_y_r = signal.convolve2d(inter_y_r, dgy)
-
-    # inter_y_g = signal.convolve2d(img_smooth[:, :, 1], [x_real], 'same')
-    # gradient_y_g = signal.convolve2d(inter_y_g, dgy)
-
-    # inter_y_b = signal.convolve2d(img_smooth[:, :, 2], [x_real], 'same')
-    # gradient_y_b = signal.convolve2d(inter_y_b, dgy)
-
-    # pylab.imshow(img_smooth)
-    # pylab.show()
+    '''
