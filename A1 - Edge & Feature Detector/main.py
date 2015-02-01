@@ -4,25 +4,19 @@ import os, os.path
 import skimage
 from math import sqrt, pi, e
 from skimage import io, color
-from scipy import ndimage, signal, mgrid
+from scipy import ndimage, signal, mgrid, misc
 
 ## GLOBAL VARS ##
-sigma = 1.0
+sigma = 0.75
 
 def gauss_partial_kernels():
     ## 1D kernel for x and y partial derivatives of bivariate gaussian ##
-    '''
-    dgx = numpy.zeros(5)
-    dgy = numpy.zeros((5, 1))
-    x = [abs(x) for x in range(-2, 3)]
-    y = [abs(y) for y in range(-2, 3)]
-    '''
     x = mgrid[-2:3]
     y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
     x = x.astype(float)
     y = y.astype(float)
 
-    ## Compute partial derivative values at x,y = -2, -1, 0, 1, 2
+    ## Compute partial derivative at x,y = -2, -1, 0, 1, 2
     dgx = -x / (sigma**3. * sqrt(2.*pi)) * e**(-x**2. / (2.*sigma**2.))
     dgy = -y / (sigma**3. * sqrt(2.*pi)) * e**(-y**2. / (2.*sigma**2.))
 
@@ -34,12 +28,6 @@ def gauss_partial_kernels():
 
 def gauss_kernels():
     ## 1D kernel for bivariate gaussian ##
-    '''
-    x_real = numpy.zeros(5)
-    y_real = numpy.zeros((5, 1))
-    x = [abs(x) for x in range(-2, 3)]
-    y = [abs(y) for y in range(-2, 3)]
-    '''
     x = mgrid[-2:3]
     y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
     x = x.astype(float)
@@ -70,6 +58,154 @@ def prompt_fpath():
     else:
         return img_path
 
+def to_degrees( radian ):
+    return radian * 180. / pi
+
+def quantize_angle( ang ):
+    if (ang < 22.5 and ang > -22.5) or (ang > 157.5) or (ang < -157.5):
+        return 0  # Check East-West 
+    elif (ang > 22.5 and ang < 67.5) or (ang < -112.5 and ang > -157.5):
+        return 45  # Check Northeast-Southwest
+    elif (ang > 67.5 and ang < 112.5) or (ang < -67.5 and ang > -112.5):
+        return 90  # Check North-South
+    elif (ang > 112.5 and ang < 157.5) or (ang < -22.5 and ang > -67.5 ):
+        return 135 # Check Northwest-Southeast
+
+def quantize_all( orientation ):
+    quantized = numpy.zeros( orientation.shape )
+
+    for row in range(len(orientation)):
+        for col in range(len(orientation[row])):
+            quantized[row][col] = ( quantize_angle(orientation[row][col]) )
+
+    return quantized
+
+def keep_maxima( F, gradient_angles ):
+    maxima = numpy.ones( F.shape )
+    at_top, at_bottom, at_left, at_right = False, False, False, False
+    is_maxima = True 
+
+    for row in range(len(F)):
+        for col in range(len(F[row])):
+            cur_angle = gradient_angles[row][col]
+            cur_magnitude = F[row][col]
+
+            at_top, at_bottom, at_left, at_right = False, False, False, False
+            if row == 0:
+                at_top = True
+            if (row == len(F)-1):
+                at_bottom = True
+            if col == 0:
+                at_left = True
+            if (col == len(F[0])-1):
+                at_right = True
+
+            is_maxima = True 
+            if cur_angle == 0:
+                # Check East-West
+                if not at_left:
+                    if cur_magnitude < F[row][col-1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+                if not at_right:
+                    if cur_magnitude < F[row][col+1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+            elif cur_angle == 45:
+                # Check Northeast-Southwest
+                if not at_right and not at_top:
+                    if cur_magnitude < F[row-1][col+1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+                if not at_left and not at_bottom:
+                    if cur_magnitude < F[row+1][col-1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+            elif cur_angle == 90:
+                # Check North-South
+                if not at_top:
+                    if cur_magnitude < F[row-1][col]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+                if not at_bottom:
+                    if cur_magnitude < F[row+1][col]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+            elif cur_angle == 135:
+                # Check Northwest-Southeast
+                if not at_left and not at_top:
+                    if cur_magnitude < F[row-1][col-1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+                if not at_right and not at_bottom:
+                    if cur_magnitude < F[row+1][col+1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+            
+            if is_maxima:
+                maxima[row][col] = cur_magnitude
+
+    return maxima
+
+def threshold_edges( I, Q, t_high, t_low ):
+    t_edges = numpy.zeros( I.shape )
+
+    for row in range(len(I)):
+        for col in range(len(I[row])):
+            if not t_edges[row][col] and I[row][col] > t_high:
+                find_edge_chains( I, t_edges, Q[row][col], row, col, t_low )
+    
+    return t_edges
+
+def find_edge_chains( I, t_edges, direction, x, y, t_low ):
+    # Find chains!
+    # if I[x][y] > t_low, add to t_edges
+    # else stop
+    # t_edges[x][y] = 1
+    # For unt_edges neighbors in the both directions...
+        # if neither neighbor is available, stop!
+        # else find_edge_chains
+
+    magnitude = I[x][y]
+    if magnitude > t_low and not t_edges[x][y]:
+        ## Pixel passes threshold. Save and mark t_edges
+        t_edges[x][y] = magnitude
+
+        at_top, at_bottom, at_left, at_right = False, False, False, False
+        if x == 0:
+            at_top = True
+        if (x == len(I)-1):
+            at_bottom = True
+        if y == 0:
+            at_left = True
+        if (y == len(I[0])-1):
+            at_right = True
+
+        if direction == 0:
+            # Check East-West
+            if not at_left and not t_edges[x][y-1]:
+                find_edge_chains( I, t_edges, direction, x, y-1, t_low )
+            if not at_right and not t_edges[x][y+1]:
+                find_edge_chains( I, t_edges, direction, x, y+1, t_low )
+        elif direction == 45:
+            # Check Northeast-Southwest
+            if not at_right and not at_top and not t_edges[x-1][y+1]:
+                find_edge_chains( I, t_edges, direction, x-1, y+1, t_low )
+            if not at_left and not at_bottom and not t_edges[x+1][y-1]:
+                find_edge_chains( I, t_edges, direction, x+1, y-1, t_low )
+        elif direction == 90:
+            # Check North-South
+            if not at_top and not t_edges[x-1][y]:
+                find_edge_chains( I, t_edges, direction, x-1, y, t_low )
+            if not at_bottom and not t_edges[x+1][y]:
+                find_edge_chains( I, t_edges, direction, x+1, y, t_low )
+        elif direction == 135:
+            # Check Northwest-Southeast
+            if not at_left and not at_top and not t_edges[x-1][y-1]:
+                find_edge_chains( I, t_edges, direction, x-1, y-1, t_low )
+            if not at_right and not at_bottom and not t_edges[x+1][y+1]:
+                find_edge_chains( I, t_edges, direction, x+1, y+1, t_low )
+
 if __name__ == "__main__":
     print "~~~ Edge, Line, & Feature Detector ~~~"
 
@@ -77,39 +213,33 @@ if __name__ == "__main__":
     # print "~~~~ Images are loaded from the 'TestImages' directory, so place your images there! ~~~~"
     # img_path = prompt_fpath()
     # img_path = raw_input("Enter image name: ")
-    img_path = "../TestImages/hyde2.jpg"
+    img_path = "../TestImages/building.jpg"
     I = skimage.img_as_float(skimage.io.imread(img_path))
     I = color.rgb2gray(I)  ## We want intensities
+    I = misc.lena()
 
-    ## Smooth (reduce noise) ##
+    ## Smooth (reduce noise) ##  TODO: Necessary?
     img_smooth = ndimage.gaussian_filter(I, sigma=sigma)
 
+    ## Convolve ##
     dgx, dgy = gauss_partial_kernels()
     gx, gy = gauss_kernels()
 
-    imgx = signal.convolve(img_smooth, [dgx], mode='same')
-    imgx2 = signal.convolve(imgx, gy, mode='same')
+    Fx1 = signal.convolve(img_smooth, [dgx], mode='same')
+    Fx = signal.convolve(Fx1, gy, mode='same')
 
-    imgy = signal.convolve(img_smooth, dgy, mode='same')
-    imgy2 = signal.convolve(imgy, [gx], mode='same')
+    Fy1 = signal.convolve(img_smooth, dgy, mode='same')
+    Fy = signal.convolve(Fy1, [gx], mode='same')
 
-    F = numpy.sqrt( imgx2**2 + imgy2**2 )  ## Gradient magnitude
-    showim( F )
+    ## Gradient magnitude & direction ##
+    F = numpy.sqrt( Fx**2 + Fy**2 )  
+    D = to_degrees( numpy.arctan2( Fy, Fx ) )
 
-    '''
-    dgx, dgy = gauss_partial_kernels()
-    gx, gy = gauss_kernels()
+    ## Nonmaximum suppression ##
+    Q = quantize_all( D )
+    I = keep_maxima( F, Q )
 
-    imgx = signal.convolve(img_smooth[:, :, 0], dgx, mode='same')
-    imgy = signal.convolve(img_smooth[:, :, 0], dgy, mode='same')
-    Wx = signal.convolve(imgx, gy, mode='same')
-    Wy = signal.convolve(imgy, gx, mode='same')
-    print(type(Wx))
+    ## Thresholding with hysteresis ##
+    tI = threshold_edges( I, Q, 0.1, 0.05 )
+    showim( tI )
 
-    W = abs(Wx)**2 + abs(Wy)**2
-    pylab.imshow(W)
-    pylab.show()
-
-    # print img_smooth[:, :, 0]
-    # print imgx
-    '''
