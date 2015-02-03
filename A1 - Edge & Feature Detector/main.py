@@ -4,7 +4,7 @@ import os, os.path
 import skimage
 from math import sqrt, pi, e
 from skimage import io, color
-from scipy import ndimage, signal, mgrid, misc
+from scipy import ndimage, signal, mgrid, misc, linalg
 
 ## GLOBAL VARS ##
 sigma = 0.75
@@ -48,7 +48,6 @@ def showim( i ):
     pylab.show()
 
 def prompt_fpath():
-    # TODO: Test
     img_name = raw_input("Enter image name: ")
     img_path = ".." + os.path.sep + "TestImages" + os.path.sep + img_name  
 
@@ -56,7 +55,23 @@ def prompt_fpath():
         print img_name + " is not a file under the TestImages directory. Try again."
         return prompt_fpath()
     else:
+        print "Found file."
         return img_path
+
+def prompt_fwhat():
+    what = int(raw_input("What do you want to do?\n1 - Edge Detection\n2 - Corner Detection\n3 - Feature Detection\n"))
+
+    if what not in [1, 2, 3]:
+        print "You can only choose from these options. Type the number and press 'enter'."
+        prompt_fwhat()
+    else:
+        if what == 1:
+            print "Doing Canny edge detection..."
+        elif what == 2:
+            print "Doing Tomasi-Kanade corner detection..."
+        elif what == 1:
+            print "Doing SIFT feature detection..."
+        return what
 
 def to_degrees( radian ):
     return radian * 180. / pi
@@ -158,17 +173,11 @@ def threshold_edges( I, Q, t_high, t_low ):
     return t_edges
 
 def find_edge_chains( I, t_edges, direction, x, y, t_low ):
-    # Find chains!
-    # if I[x][y] > t_low, add to t_edges
-    # else stop
-    # t_edges[x][y] = 1
-    # For unt_edges neighbors in the both directions...
-        # if neither neighbor is available, stop!
-        # else find_edge_chains
+    ## Find chains!
 
     magnitude = I[x][y]
     if magnitude > t_low and not t_edges[x][y]:
-        ## Pixel passes threshold. Save and mark t_edges
+        ## Pixel passes threshold. Save and mark visited
         t_edges[x][y] = magnitude
 
         at_top, at_bottom, at_left, at_right = False, False, False, False
@@ -206,18 +215,7 @@ def find_edge_chains( I, t_edges, direction, x, y, t_low ):
             if not at_right and not at_bottom and not t_edges[x+1][y+1]:
                 find_edge_chains( I, t_edges, direction, x+1, y+1, t_low )
 
-if __name__ == "__main__":
-    print "~~~ Edge, Line, & Feature Detector ~~~"
-
-    ## Load Image
-    # print "~~~~ Images are loaded from the 'TestImages' directory, so place your images there! ~~~~"
-    # img_path = prompt_fpath()
-    # img_path = raw_input("Enter image name: ")
-    img_path = "../TestImages/building.jpg"
-    I = skimage.img_as_float(skimage.io.imread(img_path))
-    I = color.rgb2gray(I)  ## We want intensities
-    I = misc.lena()
-
+def calc_gradient_components( I ):
     ## Smooth (reduce noise) ##  TODO: Necessary?
     img_smooth = ndimage.gaussian_filter(I, sigma=sigma)
 
@@ -231,15 +229,99 @@ if __name__ == "__main__":
     Fy1 = signal.convolve(img_smooth, dgy, mode='same')
     Fy = signal.convolve(Fy1, [gx], mode='same')
 
+    return Fx, Fy
+
+
+def calc_gradient_mag_and_dir( Fx, Fy ):
     ## Gradient magnitude & direction ##
     F = numpy.sqrt( Fx**2 + Fy**2 )  
     D = to_degrees( numpy.arctan2( Fy, Fx ) )
+    return F, D
 
-    ## Nonmaximum suppression ##
-    Q = quantize_all( D )
-    I = keep_maxima( F, Q )
+####### Corner Detection #######
+def eigenv_test( Fx, Fy, m, t_low ):
+    # TODO: Can parallelize
+    L = []  
+    for row in range(len( Fx )):
+        for col in range(len( Fy )):
+            C = covar_matrix( Fx, Fy, row, col, m )
 
-    ## Thresholding with hysteresis ##
-    tI = threshold_edges( I, Q, 0.1, 0.05 )
-    showim( tI )
+            # find eigenvalues
+            eigvals = linalg.eigvals( C )
+            R = min( eigvals ) # R is the 'cornerness' metric
+
+            # Test eigenvalue
+            if R > t_low:
+                L.append( ((row, col), R) )
+
+    L.sort(key=lambda entry: entry[1], reverse=True)
+    print L
+    return L
+
+def covar_matrix( Fx, Fy, startx, starty, m ):
+    C = numpy.zeros( (2, 2) )
+
+    sx, sy, sxy = 0., 0., 0.
+    for x in range( -m/2 + 1, m/2 + 1 ):
+        for y in range( -m/2 + 1, m/2 + 1 ):
+            # Compute covariance matrix for m x m neighborhood
+            if 0 <= startx + x < len(Fx) and 0 <= starty + y < len(Fy):
+                sx = sx + Fx[ startx + x ][ starty + y ]**2
+                sy = sy + Fy[ startx + x ][ starty + y ]**2
+                sxy = sxy + Fx[ startx + x ][ starty + y ] * Fy[ startx + x ][ starty + y ]
+
+    C[0][0] = sx
+    C[0][1] = sxy
+    C[1][0] = sxy
+    C[1][1] = sy
+
+    return C
+
+def filter_image( F, L ):
+    corners = numpy.zeros(F.shape)
+    for i in range(len( L )):
+        ((x, y), r) = L[i]
+        corners[x][y] = F[x][y]
+
+    return corners
+
+
+if __name__ == "__main__":
+    print "~~~ Edge, Line, & Feature Detector ~~~"
+
+    ## Load Image
+    print "\t --> Images are loaded from the '../TestImages/' directory, so place your images there!"
+    img_path = prompt_fpath()
+    I = skimage.img_as_float(skimage.io.imread(img_path))
+    I = color.rgb2gray(I)  ## We want intensities
+    Fx, Fy = calc_gradient_components( I )
+    L = eigenv_test( Fx, Fy, 3, 0.01 )
+
+    F, D = calc_gradient_mag_and_dir( Fx, Fy )
+    corners = filter_image( F, L )
+    showim(corners)
+
+    what = prompt_fwhat()
+
+    if what == 1:
+        ### Canny Edge Detection ###
+        I = color.rgb2gray(I)  ## We want intensities
+        Fx, Fy = calc_gradient_components( I )
+        F, D = calc_gradient_mag_and_dir( Fx, Fy )
+
+        ## Nonmaximum suppression ##
+        Q = quantize_all( D )
+        I = keep_maxima( F, Q )
+
+        ## Thresholding with hysteresis ##
+        tI = threshold_edges( I, Q, 0.1, 0.05 )
+        showim( tI )
+    elif what == 2:
+        ### Tomasi-Kanade Corner Detector ###
+        I = color.rgb2gray(I)  ## We want intensities
+        Fx, Fy = calc_gradient_components( I )
+        # F, D = calc_gradient_mag_and_dir( I )
+
+        ## Compute covariance matrix ##
+        eig = eigenv_test( Fx, Fy, m, t_low )
 
