@@ -2,6 +2,7 @@ import pylab
 import numpy
 import os, os.path
 import skimage
+import time
 from math import sqrt, pi, e
 from skimage import io, color
 from scipy import ndimage, signal, mgrid, misc, linalg
@@ -311,6 +312,7 @@ if __name__ == "__main__":
 
     if what == 1:
         ### Canny Edge Detection ###
+        start = time.clock()
         I = color.rgb2gray(I)  ## We want intensities
         Fx, Fy = calc_gradient_components( I )
         F, D = calc_gradient_mag_and_dir( Fx, Fy )
@@ -321,13 +323,30 @@ if __name__ == "__main__":
 
         ## Thresholding with hysteresis ##
         tI = threshold_edges( I, Q, t_high=0.1, t_low=0.05 )
+
+        end = time.clock()
+        print "Canny edge detection completed in " + str(end - start) + "s"
+
         showim( tI )
+
     elif what == 2:
         ### Tomasi-Kanade Corner Detector ###
+        start = time.clock()
         I = color.rgb2gray(I)  ## We want intensities
         Fx, Fy = calc_gradient_components( I )
         L, L_square = eigenv_test( Fx, Fy, m=3, t_low=0.01 )
 
         F, D = calc_gradient_mag_and_dir( Fx, Fy )
         strong_corners = filter_eigvals( F, L, L_square, m=5 )
+
+        end = time.clock()
+        print "Canny edge detection completed in " + str(end - start) + "s"
+
         showim(strong_corners)
+
+    elif what == 3:
+        ### SIFT Feature Detector ####
+        start = time.clock()
+        end = time.clock()
+
+        print "SIFT feature detection completed in " + str(end - start) + "s"
