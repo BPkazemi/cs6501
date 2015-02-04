@@ -242,6 +242,7 @@ def calc_gradient_mag_and_dir( Fx, Fy ):
 def eigenv_test( Fx, Fy, m, t_low ):
     # TODO: Can parallelize
     L = []  
+    L_square = numpy.zeros( Fx.shape )
     for row in range(len( Fx )):
         for col in range(len( Fy )):
             C = covar_matrix( Fx, Fy, row, col, m )
@@ -253,10 +254,11 @@ def eigenv_test( Fx, Fy, m, t_low ):
             # Test eigenvalue
             if R > t_low:
                 L.append( ((row, col), R) )
+                L_square[row][col] = R
 
     L.sort(key=lambda entry: entry[1], reverse=True)
-    print L
-    return L
+
+    return L, L_square
 
 def covar_matrix( Fx, Fy, startx, starty, m ):
     C = numpy.zeros( (2, 2) )
@@ -277,11 +279,22 @@ def covar_matrix( Fx, Fy, startx, starty, m ):
 
     return C
 
-def filter_image( F, L ):
-    corners = numpy.zeros(F.shape)
+def filter_eigvals( F, L, L_square, m ):
+    corners = numpy.zeros( F.shape )
     for i in range(len( L )):
         ((x, y), r) = L[i]
         corners[x][y] = F[x][y]
+
+     
+    for i in range(len(L)):
+        # Nonmaximum Suppression #
+        ((x, y), r) = L[i]
+        for dx in range( -m/2 + 1, m/2 + 1 ):
+            for dy in range( -m/2 + 1, m/2 + 1 ):
+                if 0 <= dx + x < len(L_square) and 0 <= dy + y < len(L_square[x]):
+                    # Remove smaller neighbors
+                    if r > L_square[x + dx][y + dy]:
+                        strong_corners[x + dx][y + dy] = 0
 
     return corners
 
@@ -295,11 +308,11 @@ if __name__ == "__main__":
     I = skimage.img_as_float(skimage.io.imread(img_path))
     I = color.rgb2gray(I)  ## We want intensities
     Fx, Fy = calc_gradient_components( I )
-    L = eigenv_test( Fx, Fy, 3, 0.01 )
+    L, L_square = eigenv_test( Fx, Fy, 3, 0.01 )
 
     F, D = calc_gradient_mag_and_dir( Fx, Fy )
-    corners = filter_image( F, L )
-    showim(corners)
+    strong_corners = filter_eigvals( F, L, L_square, 5 )
+    showim(strong_corners)
 
     what = prompt_fwhat()
 
