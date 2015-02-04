@@ -286,15 +286,15 @@ def filter_eigvals( F, L, L_square, m ):
         corners[x][y] = F[x][y]
 
      
+    # Nonmaximum Suppression #
     for i in range(len(L)):
-        # Nonmaximum Suppression #
         ((x, y), r) = L[i]
         for dx in range( -m/2 + 1, m/2 + 1 ):
             for dy in range( -m/2 + 1, m/2 + 1 ):
                 if 0 <= dx + x < len(L_square) and 0 <= dy + y < len(L_square[x]):
                     # Remove smaller neighbors
                     if r > L_square[x + dx][y + dy]:
-                        strong_corners[x + dx][y + dy] = 0
+                        corners[x + dx][y + dy] = 0
 
     return corners
 
@@ -306,13 +306,6 @@ if __name__ == "__main__":
     print "\t --> Images are loaded from the '../TestImages/' directory, so place your images there!"
     img_path = prompt_fpath()
     I = skimage.img_as_float(skimage.io.imread(img_path))
-    I = color.rgb2gray(I)  ## We want intensities
-    Fx, Fy = calc_gradient_components( I )
-    L, L_square = eigenv_test( Fx, Fy, 3, 0.01 )
-
-    F, D = calc_gradient_mag_and_dir( Fx, Fy )
-    strong_corners = filter_eigvals( F, L, L_square, 5 )
-    showim(strong_corners)
 
     what = prompt_fwhat()
 
@@ -327,14 +320,14 @@ if __name__ == "__main__":
         I = keep_maxima( F, Q )
 
         ## Thresholding with hysteresis ##
-        tI = threshold_edges( I, Q, 0.1, 0.05 )
+        tI = threshold_edges( I, Q, t_high=0.1, t_low=0.05 )
         showim( tI )
     elif what == 2:
         ### Tomasi-Kanade Corner Detector ###
         I = color.rgb2gray(I)  ## We want intensities
         Fx, Fy = calc_gradient_components( I )
-        # F, D = calc_gradient_mag_and_dir( I )
+        L, L_square = eigenv_test( Fx, Fy, m=3, t_low=0.01 )
 
-        ## Compute covariance matrix ##
-        eig = eigenv_test( Fx, Fy, m, t_low )
-
+        F, D = calc_gradient_mag_and_dir( Fx, Fy )
+        strong_corners = filter_eigvals( F, L, L_square, m=5 )
+        showim(strong_corners)
