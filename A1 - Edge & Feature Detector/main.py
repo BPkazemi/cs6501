@@ -3,21 +3,24 @@ import numpy
 import os, os.path
 import skimage
 import time
+import math
 from math import sqrt, pi, e
 from skimage import io, color
 from scipy import ndimage, signal, mgrid, misc, linalg
 
 ## GLOBAL VARS ##
-sigma = 0.75
+sigma = 1.6
 
-def gauss_partial_kernels():
-    ## 1D kernel for x and y partial derivatives of bivariate gaussian ##
-    x = mgrid[-2:3]
-    y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
-    x = x.astype(float)
-    y = y.astype(float)
+## Utils ##
+def gauss_partials( sigma ):
+    ## x and y kernels of the partial derivative of a bivariate gaussian ##
 
-    ## Compute partial derivative at x,y = -2, -1, 0, 1, 2
+    ## 2D version of: [-2 -1 0 1 2]  ##
+    ## TODO: Would it be better to be 1sigma, 2sigma, etc?
+    x = mgrid[-2:3].astype(float)
+    y = numpy.swapaxes([mgrid[-2:3]], 0, 1).astype(float)
+
+    ## Formula for partial derivative
     dgx = -x / (sigma**3. * sqrt(2.*pi)) * e**(-x**2. / (2.*sigma**2.))
     dgy = -y / (sigma**3. * sqrt(2.*pi)) * e**(-y**2. / (2.*sigma**2.))
 
@@ -27,12 +30,10 @@ def gauss_partial_kernels():
     
     return (dgx, dgy) 
 
-def gauss_kernels():
-    ## 1D kernel for bivariate gaussian ##
-    x = mgrid[-2:3]
-    y = numpy.swapaxes([mgrid[-2:3]], 0, 1)
-    x = x.astype(float)
-    y = y.astype(float)
+def gauss( sigma ):
+    ## x and y kernels of a bivariate gaussian ##
+    x = mgrid[-2:3].astype(float)
+    y = numpy.swapaxes([mgrid[-2:3]], 0, 1).astype(float)
 
     ## Compute gaussian values at x,y = -2, -1, 0, 1, 2
     gx = 1. / (sigma * sqrt(2. * pi)) * e**(-x**2. / (2. * sigma**2.))
@@ -47,6 +48,20 @@ def gauss_kernels():
 def showim( i ):
     pylab.imshow(i, cmap="gray")
     pylab.show()
+
+    ''' "Multiple images" 
+        fig = pylab.figure()
+        a = fig.add_subplot(1, nScales, (i+1))
+        pylab.imshow(scaledImages[i], cmap="gray")
+        pylab.show()
+    '''
+def showims( imgs ):
+    fig = pylab.figure()
+    for i in range(len(imgs)):
+        a = fig.add_subplot(1, len(imgs), (i+1))
+        pylab.imshow(imgs[i], cmap="gray")
+    pylab.show()
+
 
 def prompt_fpath():
     img_name = raw_input("Enter image name: ")
@@ -77,7 +92,21 @@ def prompt_fwhat():
 def to_degrees( radian ):
     return radian * 180. / pi
 
-def quantize_angle( ang ):
+def set_bounds_flags( A, x, y ):
+    at_top, at_bottom, at_left, at_right = False, False, False, False
+    if x == 0:
+        at_top = True
+    if (x == len(A)-1):
+        at_bottom = True
+    if y == 0:
+        at_left = True
+    if (y == len(A[0])-1):
+        at_right = True
+
+    return (at_top, at_bottom, at_left, at_right)
+
+## Potentially util
+def quantize_ang( ang ):
     if (ang < 22.5 and ang > -22.5) or (ang > 157.5) or (ang < -157.5):
         return 0  # Check East-West 
     elif (ang > 22.5 and ang < 67.5) or (ang < -112.5 and ang > -157.5):
@@ -87,26 +116,28 @@ def quantize_angle( ang ):
     elif (ang > 112.5 and ang < 157.5) or (ang < -22.5 and ang > -67.5 ):
         return 135 # Check Northwest-Southeast
 
-def quantize_all( orientation ):
+def quantize_orientation( orientation ):
     quantized = numpy.zeros( orientation.shape )
 
     for row in range(len(orientation)):
         for col in range(len(orientation[row])):
-            quantized[row][col] = ( quantize_angle(orientation[row][col]) )
+            quantized[row][col] = ( quantize_ang(orientation[row][col]) )
 
     return quantized
 
-def keep_maxima( F, gradient_angles ):
+## Canny
+def local_maxima( F, orientation ):
     maxima = numpy.ones( F.shape )
     at_top, at_bottom, at_left, at_right = False, False, False, False
     is_maxima = True 
 
     for row in range(len(F)):
         for col in range(len(F[row])):
-            cur_angle = gradient_angles[row][col]
+            cur_angle = orientation[row][col]
             cur_magnitude = F[row][col]
 
-            at_top, at_bottom, at_left, at_right = False, False, False, False
+            at_top, at_bottom, at_left, at_right = set_bounds_flags( F, row, col )
+            '''
             if row == 0:
                 at_top = True
             if (row == len(F)-1):
@@ -115,16 +146,17 @@ def keep_maxima( F, gradient_angles ):
                 at_left = True
             if (col == len(F[0])-1):
                 at_right = True
+            '''
 
             is_maxima = True 
             if cur_angle == 0:
                 # Check East-West
-                if not at_left:
-                    if cur_magnitude < F[row][col-1]:
-                        maxima[row][col] = 0
-                        is_maxima = False
                 if not at_right:
                     if cur_magnitude < F[row][col+1]:
+                        maxima[row][col] = 0
+                        is_maxima = False
+                if not at_left:
+                    if cur_magnitude < F[row][col-1]:
                         maxima[row][col] = 0
                         is_maxima = False
             elif cur_angle == 45:
@@ -164,24 +196,24 @@ def keep_maxima( F, gradient_angles ):
     return maxima
 
 def threshold_edges( I, Q, t_high, t_low ):
-    t_edges = numpy.zeros( I.shape )
+    ''' Thresholding, with hysteresis ''' 
 
+    t_edges = numpy.zeros( I.shape )
     for row in range(len(I)):
         for col in range(len(I[row])):
             if not t_edges[row][col] and I[row][col] > t_high:
-                find_edge_chains( I, t_edges, Q[row][col], row, col, t_low )
+                find_edge_chains( I, row, col, t_edges, Q[row][col], t_low )
     
     return t_edges
 
-def find_edge_chains( I, t_edges, direction, x, y, t_low ):
-    ## Find chains!
-
+def find_edge_chains( I, x, y, t_edges, direction, t_low ):
     magnitude = I[x][y]
     if magnitude > t_low and not t_edges[x][y]:
         ## Pixel passes threshold. Save and mark visited
         t_edges[x][y] = magnitude
 
-        at_top, at_bottom, at_left, at_right = False, False, False, False
+        at_top, at_bottom, at_left, at_right = set_bounds_flags( I, x, y )
+        '''
         if x == 0:
             at_top = True
         if (x == len(I)-1):
@@ -190,6 +222,7 @@ def find_edge_chains( I, t_edges, direction, x, y, t_low ):
             at_left = True
         if (y == len(I[0])-1):
             at_right = True
+        '''
 
         if direction == 0:
             # Check East-West
@@ -216,13 +249,14 @@ def find_edge_chains( I, t_edges, direction, x, y, t_low ):
             if not at_right and not at_bottom and not t_edges[x+1][y+1]:
                 find_edge_chains( I, t_edges, direction, x+1, y+1, t_low )
 
-def calc_gradient_components( I ):
+## Util
+def gradient_components( I ):
     ## Smooth (reduce noise) ##  TODO: Necessary?
     img_smooth = ndimage.gaussian_filter(I, sigma=sigma)
 
     ## Convolve ##
-    dgx, dgy = gauss_partial_kernels()
-    gx, gy = gauss_kernels()
+    dgx, dgy = gauss_partials( sigma=sigma )
+    gx, gy = gauss( sigma=sigma )
 
     Fx1 = signal.convolve(img_smooth, [dgx], mode='same')
     Fx = signal.convolve(Fx1, gy, mode='same')
@@ -233,8 +267,8 @@ def calc_gradient_components( I ):
     return Fx, Fy
 
 
-def calc_gradient_mag_and_dir( Fx, Fy ):
-    ## Gradient magnitude & direction ##
+def gradient_mag_and_dir( Fx, Fy ):
+    ''' Finds gradient magnitude & direction '''
     F = numpy.sqrt( Fx**2 + Fy**2 )  
     D = to_degrees( numpy.arctan2( Fy, Fx ) )
     return F, D
@@ -285,7 +319,6 @@ def filter_eigvals( F, L, L_square, m ):
     for i in range(len( L )):
         ((x, y), r) = L[i]
         corners[x][y] = F[x][y]
-
      
     # Nonmaximum Suppression #
     for i in range(len(L)):
@@ -296,30 +329,135 @@ def filter_eigvals( F, L, L_square, m ):
                     # Remove smaller neighbors
                     if r > L_square[x + dx][y + dy]:
                         corners[x + dx][y + dy] = 0
-
     return corners
 
+def checkNeighbors3( DoGs, (startx, starty), m ):
+    if len(DoGs) != 3:
+        raise Exception( "checkNeighbors3 must be called on a list of length 3 only." )
+
+    d0 = DoGs[0]
+    d1 = DoGs[1]
+    d2 = DoGs[2]
+
+    candidate = d1[ startx ][ starty ]
+
+    local_min, local_max = True, True
+    for x in range( -m/2 + 1, m/2 + 1 ):
+        for y in range( -m/2 + 1, m/2 + 1 ):
+            # Check bounds
+            if 0 <= startx + x < len(d1) and 0 <= starty + y < len(d1[x]):
+                if d0[startx+x][starty+y] > candidate or d2[startx+x][starty+y] > candidate:
+                    local_max = False
+                if d0[startx+x][starty+y] < candidate or d2[startx+x][starty+y] < candidate:
+                    local_min = False
+
+    return local_min, local_max
+
+def downsample( I, factor ):
+    xDim = int( math.ceil( I.shape[0]/float(factor) ) )
+    yDim = int( math.ceil( I.shape[1]/float(factor) ) )
+    newI = numpy.zeros( (xDim, yDim) )
+
+    for x in range(xDim):
+        for y in range(yDim):
+            newI[x][y] = I[factor*x][factor*y]
+
+    return newI
+
+def findScaleSpaceExtrema( I, nOctaves, nScales, delSigma, k ):
+    ## TODO: Do values of k depend on nScales? Does nScales depend on the number of intervals we seek?
+    print "Calculating keypoints..."
+
+    if nScales < 4:
+        raise Exception( "Too few scales. Must be >= 4.")
+
+    original = I
+    octaves = []
+    DoGs = {}
+    nKeypoints = 0
+    ## 0. For each octave...
+    for oc in range( nOctaves ):
+        ## 1. Define octave's scale-space. sigma = 1.6, k = sqrt(2)
+        scaledImages = []
+        for i in range( nScales ):
+            sig = k**(i+1.) * delSigma
+            scaledImages.append( ndimage.gaussian_filter(I, sigma=sig) )
+        octaves.append(scaledImages)
+
+        ## 2. Take DoG. Per octave: nDoGs = (nScales - 1), nDoGs-2 Triples.
+        DoGs[oc] = []
+        for i in range( nScales-1 ):
+            L2 = scaledImages[ i+1 ]
+            L1 = scaledImages[ i ]
+
+            DoGs[oc].append(L2-L1)
+
+        ## 3. Find local extrema among DoGs.
+        # keypoints = numpy.zeros( scaledImages[0].shape, dtype=('f4, i4') )
+        keypoints = numpy.zeros( (scaledImages[0].shape[0], scaledImages[0].shape[1], nScales) )
+        nTriples = len( DoGs[0] )-2
+        curDoGs = DoGs[oc]
+        maxS = 0
+        for i in range( nTriples ):
+            d0 = curDoGs[ i ]
+            d1 = curDoGs[ i+1 ]
+            d2 = curDoGs[ i+2 ]
+
+            for x in range(len(d1)):
+                for y in range(len(d1[x])):
+                    local_min, local_max = checkNeighbors3( [d0, d1, d2], (x, y), m=3 )
+                    if local_min or local_max:
+                        keypoints[x][y][i+1] = d1[x][y]
+                        nKeypoints += 1
+                        maxS = max( maxS, i+1 )
+
+        sampleIndex = int(round(math.log(2) / math.log(k)))  # k^x = 2 -> Index where blur = 2*sigma
+        I = downsample( scaledImages[sampleIndex], 2 )
+
+        ## Spatial data-structure would speed this up (kd-tree, BSP tree) ##
+        pylab.imshow( original, cmap="gray" )
+        for x in range(len(keypoints)):
+            for y in range(len(keypoints[x])):
+                for s in range(len(keypoints[x][y])):
+                    if keypoints[x][y][s] != 0:
+                        pylab.plot( y, x, marker='o', ms=((3.*s/maxS)**2), c='y', alpha=0.4 )
+        pylab.show()
+
+
+    print str(nKeypoints) + " keypoints found"
+    return keypoints
+
+def localizeKeypoints():
+    print "Localizing keypoints..."
+    ## 1. Filter out low-contrast points
+
+    ## 2. Discard keypoints along edges
+    ## 2a. Compute Hessian of D
+
+    ## 2b. Calculate trace, determinant, and r
 
 if __name__ == "__main__":
     print "~~~ Edge, Line, & Feature Detector ~~~"
 
     ## Load Image
     print "\t --> Images are loaded from the '../TestImages/' directory, so place your images there!"
-    img_path = prompt_fpath()
+    # img_path = prompt_fpath()
+    img_path = "../TestImages/building.jpg"
     I = skimage.img_as_float(skimage.io.imread(img_path))
+    I = color.rgb2gray(I)  ## We want intensities
 
-    what = prompt_fwhat()
+    # what = prompt_fwhat()
+    what = 3
 
     if what == 1:
         ### Canny Edge Detection ###
         start = time.clock()
-        I = color.rgb2gray(I)  ## We want intensities
-        Fx, Fy = calc_gradient_components( I )
-        F, D = calc_gradient_mag_and_dir( Fx, Fy )
+        Fx, Fy = gradient_components( I )
+        F, D = gradient_mag_and_dir( Fx, Fy )
 
         ## Nonmaximum suppression ##
-        Q = quantize_all( D )
-        I = keep_maxima( F, Q )
+        Q = quantize_orientation( D )
+        I = local_maxima( F, Q )
 
         ## Thresholding with hysteresis ##
         tI = threshold_edges( I, Q, t_high=0.1, t_low=0.05 )
@@ -328,25 +466,28 @@ if __name__ == "__main__":
         print "Canny edge detection completed in " + str(end - start) + "s"
 
         showim( tI )
-
     elif what == 2:
         ### Tomasi-Kanade Corner Detector ###
         start = time.clock()
-        I = color.rgb2gray(I)  ## We want intensities
-        Fx, Fy = calc_gradient_components( I )
+        Fx, Fy = gradient_components( I )
         L, L_square = eigenv_test( Fx, Fy, m=3, t_low=0.01 )
 
-        F, D = calc_gradient_mag_and_dir( Fx, Fy )
+        F, D = gradient_mag_and_dir( Fx, Fy )
         strong_corners = filter_eigvals( F, L, L_square, m=5 )
 
         end = time.clock()
         print "Canny edge detection completed in " + str(end - start) + "s"
 
         showim(strong_corners)
-
     elif what == 3:
-        ### SIFT Feature Detector ####
+        ### SIFT Feature Detector ###
         start = time.clock()
-        end = time.clock()
 
+        ## 1. Find scale-space extrema
+        findScaleSpaceExtrema( I, nOctaves=1, nScales=6, delSigma=1.6, k=2.**(1./3.) )
+
+        ## 2. Localize keypoints
+        localizeKeypoints()
+
+        end = time.clock()
         print "SIFT feature detection completed in " + str(end - start) + "s"
