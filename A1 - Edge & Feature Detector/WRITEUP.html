@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Babak Pourkazemi's CS 6501 Assignment 1 Submission</title>
+</head>
+<body>
+    <div>
+        <h1>bp5xj's CS 6501 Assignment 1 Submission</h1>
+        <h3>Submission Information</h3>
+        <ul>
+            <li>Name: Babak Pourkazemi</li>
+            <li>UVA Computing ID: bp5xj</li>
+            <li>Interpreter: iPython</li>
+            <li>Environment/platform: Mac OS X Yosemite 10.10.1</li>
+            <li>Number of late days used: 3</li>
+            <li>
+                Implemented sections
+                <ol>
+                    <li>(50%) Canny Edge Detector</li>
+                    <li>(20%) Tomasi-Kanade Corner Detector</li>
+                    <li>(30%) SIFT Feature Detector</li>
+                </ol>
+            </li>
+        </ul>
+
+        <h3>Setup</h2>
+        My local machine is a Macbook Air running OS X Yosemite (10.10.1). 
+
+        <h3>Notes</h2>
+        Some notes:
+        <ul>
+            <li>
+            Various sections of my code (Canny, SIFT) would benefit with the use of spatial data structures. Similarly, there are places I could use matrix operations instead of for-looping through the matrices. Thus, my implementation has room for speedups.
+            </li>
+            <li>
+            The program is interactive, so you have to specify the image file you want to load, and what you want to run on it. To start the program, type "python main.py" from the command line. The program will ask you for the <em>image name</em> and the <em>type of detector</em> you want. For the type of detector, type "1" for edge detection, "2" for corner detection, and "3" for SIFT detection. These instructions are given when you run the program. <b>Important: The program will look for images in the "./TestImages/" directory, relative to main.py.</b>
+            </li>
+        </ul>
+        <h3>Results</h2>
+        <ol>
+            <li> Canny Edge Detector
+                <table border="1">
+                    <tbody>
+                        <tr>
+                            <td><img src="writeup_html/edge_building_fx.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_building_fy.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_building_f.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center">Horizontal Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Vertical Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Gradient Magnitude, <code>sigma = 0.5</code></td>
+                        </tr>
+                        <tr>
+                            <td><img src="writeup_html/edge_mandrill_fx.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_mandrill_fy.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_mandrill_f.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center">Horizontal Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Vertical Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Gradient Magnitude, <code>sigma = 0.5</code></td>
+                        </tr>
+                        <tr>
+                            <td><img src="writeup_html/edge_checkers_fx.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_checkers_fy.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_checkers_f.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center">Horizontal Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Vertical Gradient, <code>sigma = 0.5</code></td>
+                            <td align="center">Gradient Magnitude, <code>sigma = 0.5</code></td>
+                        </tr>
+                        <tr>
+                            <td><img src="writeup_html/edge_building1.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_building2.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center"><code>sigma = 1.0</code></td>
+                            <td align="center"><code>sigma = 0.5</code></td>
+                        </tr>
+                        <tr>
+                            <td><img src="writeup_html/edge_mandrill1.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_mandrill2.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center"><code>sigma = 1.0</code></td>
+                            <td align="center"><code>sigma = 0.5</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </li>
+            <li>
+                <div>Tomasi Kanade Corner Detector</div>
+                <table border="1">
+                    <tbody>
+                        <b>Squint to see some of these!</b>
+                        <tr>
+                            <td><img src="writeup_html/corner_building1.jpg" width="500"></td>
+                            <td><img src="writeup_html/corner_checkers1.jpg" width="500"></td>
+                            <td><img src="writeup_html/corner_mandrill1.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center">Building,  <code>sigma = 0.5</code></td>
+                            <td align="center">Checkers,  <code>sigma = 0.5</code></td>
+                            <td align="center">Mandrill,  <code>sigma = 0.5</code></td>
+                        </tr>
+                        <tr>
+                            <td><img src="writeup_html/corner_mandrill1.jpg" width="500"></td>
+                            <td><img src="writeup_html/corner_mandrill_t02.jpg" width="500"></td>
+                            <td><img src="writeup_html/corner_mandrill_t04.jpg" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center">Mandrill,  <code>threshold_low = 0.01, sigma = 0.5</code></td>
+                            <td align="center">Mandrill,  <code>threshold_low = 0.02, sigma = 0.5</code></td>
+                            <td align="center">Mandrill,  <code>threshold_low = 0.04, sigma = 0.5</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </li>
+            <li>
+                <div>SIFT Feature Detector</div>
+                <table border="1">
+                    <tbody>
+                        <tr>
+                            <td><img src="writeup_html/sift_building1.png" width="500"></td>
+                            <td><img src="writeup_html/sift_checkers1.png" width="500"></td>
+                            <td><img src="writeup_html/sift_mandrill1.png" width="500"></td>
+                            <td><img src="writeup_html/sift_mandrill2.png" width="500"></td>
+                        </tr>
+                        <tr>
+                            <td align="center"><code>sigma = 1.6, nOctaves=1, nScales=1, delSigma=1.6, k=2^(1/3)</code></td>
+                            <td align="center"><code>sigma = 1.6, nOctaves=1, nScales=1, delSigma=1.6, k=2^(1/3)</code></td>
+                            <td align="center"><code>sigma = 1.6, nOctaves=1, nScales=1, delSigma=1.6, k=2^(1/3)</code></td>
+                            <td align="center"><code>sigma = 1.6, nOctaves=1, nScales=3, delSigma=1.6, k=2^(1/3)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </li>
+            <li>
+                <div>Other</div>
+                <table border="1">
+                    <tbody>
+                        <tr>
+                            <td><img src="TestImages/flickr1.jpg" width="500"></td>
+                            <td><img src="writeup_html/edge_flickr.jpg" width="500"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </li>
+        </ol>
+    </div>
+    <div>
+        <h2>Analysis</h2>
+        <p>Edge - Edge detection depends a lot on the images and the sigma you use. For a constant sigma, I found that certain images (those with sharp intensity changes) show edges best. You can see this in the checkers.jpg above. Smaller sigma resulted in removing fewer frequencies, and so more edges show up (as does more noise). If we want the "strongest" edges, we should increase sigma.</p>
+        <p>Corner - The same sigma rules apply to the corner detector as to the edge detector. However, we can also modify the chain thresholds to get different results. Corners were notoriously "light". Which is why, in the above pictures, it helps to zoom in on the page. Higher thresholds = fewer detected points.</p>
+        <p>SIFT - This was a very difficult thing to implement for me. Unfortunately, y implementation is discarding too many points on the low-contrast test. Similarly, it seems to find an abnormally large number of keypoints as the number of scales go up. That said, it seems to find the most important keypoints of the image.</p>
+    </div>
+</body>
+</html>
